@@ -1,0 +1,186 @@
+
+resource "aws_vpc" "my_vpc" {
+  count      = 3
+  cidr_block = cidrsubnet("10.0.0.0/16", 8, count.index)
+
+  tags = {
+    Name = "my-vpc-${count.index + 1}"
+  }
+}
+
+resource "aws_subnet" "subnet" {
+  count      = 3
+  vpc_id     = aws_vpc.my_vpc[count.index].id
+  cidr_block = cidrsubnet(aws_vpc.my_vpc[count.index].cidr_block, 24, 1)
+
+  tags = {
+    Name = "subnet-${count.index + 1}"
+  }
+}
+
+resource "aws_internet_gateway" "my_igw" {
+  count  = 3
+  vpc_id = aws_vpc.my_vpc[count.index].id
+
+  tags = {
+    Name = "my-igw-${count.index + 1}"
+  }
+}
+
+resource "aws_route_table" "my_route_table" {
+  count  = 3
+  vpc_id = aws_vpc.my_vpc[count.index].id
+
+  tags = {
+    Name = "my-route-table-${count.index + 1}"
+  }
+}
+
+resource "aws_route" "my_route" {
+  count                     = 3
+  route_table_id            = aws_route_table.my_route_table[count.index].id
+  destination_cidr_block    = "0.0.0.0/0"
+  gateway_id                = aws_internet_gateway.my_igw[count.index].id
+}
+
+resource "aws_route_table_association" "subnet_1_association" {
+  count         = 3
+  subnet_id     = aws_subnet.subnet[count.index].id
+  route_table_id = aws_route_table.my_route_table[count.index].id
+}
+
+resource "aws_key_pair" "my_keypair" {
+  key_name   = "my-keypair"
+  public_key = file("~/.ssh/id_rsa.pub")  # Replace with the path to your public key file
+}
+
+resource "aws_security_group" "sg_1" {
+  name        = "my-sg-1"
+  description = "Security group for instance 1"
+  vpc_id      = aws_vpc.my_vpc[0].id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[1].cidr_block]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[2].cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"  # Allows all outbound traffic
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "my-sg-1"
+  }
+}
+
+resource "aws_security_group" "sg_2" {
+  name        = "my-sg-2"
+  description = "Security group for instance 2"
+  vpc_id      = aws_vpc.my_vpc[1].id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[0].cidr_block]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[2].cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"  # Allows all outbound traffic
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "my-sg-2"
+  }
+}
+
+resource "aws_security_group" "sg_3" {
+  name        = "my-sg-3"
+  description = "Security group for instance 3"
+  vpc_id      = aws_vpc.my_vpc[2].id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[0].cidr_block]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.my_vpc[1].cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"  # Allows all outbound traffic
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "my-sg-3"
+  }
+}
+
+resource "aws_instance" "my_instance" {
+  count         = 3 # 1 instance in each of the 3 VPCs
+  ami           = "ami-0c55b159cbfafe1f0" # Replace with your preferred AMI ID
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.subnet[count.index].id
+  key_name      = aws_key_pair.my_keypair.key_name  # Use the created key pair
+  security_groups = [
+    aws_security_group.sg_1.name,
+    aws_security_group.sg_2.name,
+    aws_security_group.sg_3.name
+  ]
+
+  tags = {
+    Name = "my-instance-${count.index + 1}"
+  }
+}
